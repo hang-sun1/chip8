@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Debug",
             "program": "${workspaceFolder}/build/chip8",
-            "args": [],
+            "args": ["${workspaceFolder}/test_data/ibm_logo.ch8"],
             "cwd": "${workspaceFolder}"
         }
     ]
