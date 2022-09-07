@@ -15,7 +15,6 @@ const int SCREEN_HEIGHT = 640;
 
 int main(int argc, char **argv) {
   SDL_Window *window;
-  SDL_Surface *surface;
   SDL_Renderer *renderer;
 
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -37,8 +36,8 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  Emulator emu;
-  init_emulator(&emu);
+  Chip8Emulator emu;
+  chip8_init_emulator(&emu);
 
   // check that the user provides a file
   if (argc < 2) {
@@ -62,7 +61,7 @@ int main(int argc, char **argv) {
   fread(buffer, file_len, 1, program);
   fclose(program);
 
-  load_program(&emu, buffer, file_len);
+  chip8_load_program(&emu, buffer, file_len);
 
   SDL_Event window_event;
   int running = 1;
@@ -71,7 +70,7 @@ int main(int argc, char **argv) {
     if (!running) {
       break;
     }
-    run(&emu);
+    chip8_run(&emu);
     while (SDL_PollEvent(&window_event)) {
       switch (window_event.type) {
       case SDL_QUIT:
@@ -81,8 +80,8 @@ int main(int argc, char **argv) {
     }
     SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xff);
     SDL_RenderClear(renderer);
-    render_display(renderer, SCREEN_WIDTH, SCREEN_HEIGHT, &emu);
-    render_grid(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
+    chip8_render_display(renderer, SCREEN_WIDTH, SCREEN_HEIGHT, &emu);
+    // chip8_render_grid(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
     SDL_RenderPresent(renderer);
   } while (1);
   SDL_DestroyWindow(window);

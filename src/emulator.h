@@ -10,9 +10,9 @@
 #define STACK_SIZE 1024
 
 // width is 8 bytes or 64 bits
-#define DISPLAY_WIDTH 64
+#define CHIP8_DISPLAY_WIDTH 64
 // height is 4 bytes or 32 bits
-#define DISPLAY_HEIGHT 32
+#define CHIP8_DISPLAY_HEIGHT 32
 
 typedef struct Emulator {
   uint8_t memory[MEMORY_SIZE];
@@ -22,14 +22,16 @@ typedef struct Emulator {
   // program counter
   uint16_t pc;
   // The registers, named/indexed V0 - VF
-  uint8_t registers[16];
+  uint16_t registers[16];
   uint16_t index_register;
-    
-  uint64_t graphics[DISPLAY_HEIGHT];
-} Emulator;
 
-void init_emulator(Emulator *emulator);
-void load_program(Emulator *emulator, uint8_t *program, long program_size);
-void run(Emulator *emulator);
-void render_grid(SDL_Renderer *r, double width, double height);
-void render_display(SDL_Renderer *r, double width, double height, Emulator* emulator);
+  uint64_t graphics[CHIP8_DISPLAY_HEIGHT];
+} Chip8Emulator;
+
+void chip8_init_emulator(Chip8Emulator *emulator);
+void chip8_load_program(Chip8Emulator *emulator, uint8_t *program,
+                        long program_size);
+void chip8_run(Chip8Emulator *emulator);
+void chip8_render_grid(SDL_Renderer *r, double width, double height);
+void chip8_render_display(SDL_Renderer *r, double width, double height,
+                          Chip8Emulator *emulator);
