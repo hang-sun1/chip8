@@ -33,11 +33,8 @@ static const uint8_t LETTER_E[] = {0xF0, 0x80, 0xF0, 0x80, 0xF0};
 static const uint8_t LETTER_F[] = {0xF0, 0x80, 0xF0, 0x80, 0x80};
 
 void chip8_init_emulator(Chip8Emulator *emulator) {
-  memset(emulator->memory, 0, MEMORY_SIZE);
-  memset(emulator->stack, 0, STACK_SIZE);
-  emulator->sp = 0;
-  emulator->pc = 0;
-
+  memset(emulator, 0, sizeof(Chip8Emulator));
+  
   // Load the fonts, starting at the offset defined by FONT_OFFSET
   uint16_t offset = FONT_OFFSET;
   memcpy(emulator->memory + offset, NUM_ZERO, FONT_SIZE);
@@ -128,6 +125,7 @@ static inline void set_index_register(Chip8Emulator *emulator, uint16_t ins) {
 }
 
 static inline void draw(Chip8Emulator *emulator, uint16_t ins) {
+  emulator->registers[0xf] = 0;
   uint16_t x = emulator->registers[X(ins)] & 63;
   uint16_t y = emulator->registers[Y(ins)] & 31;
   uint16_t sprite_height = N(ins);
@@ -136,32 +134,39 @@ static inline void draw(Chip8Emulator *emulator, uint16_t ins) {
     if (y >= CHIP8_DISPLAY_HEIGHT) {
       break;
     }
-    uint64_t data = (uint64_t) emulator->memory[emulator->index_register+i];
+    uint64_t data = (uint64_t)emulator->memory[emulator->index_register + i];
 
-    emulator->graphics[y] ^= data << 56 >> x;
+    uint64_t new_bytes = (data << 56) >> x;
+
+    if (new_bytes & emulator->graphics[y]) {
+      emulator->registers[0xf] = 1;
+    }
+
+    emulator->graphics[y] ^= new_bytes;
 
     // moving to the next row and exiting if the sprite
     // is cut off from the rest of the screen
     y += 1;
   }
+
   // TODO: set the flags register to 0
 }
 
 static inline void clear_screen(Chip8Emulator *emulator) {
   // just zero the entire graphics area
-  memset(emulator->graphics, 0, 8 * 32);
+  memset(emulator->graphics, 0, sizeof(emulator->graphics));
 }
 
 static inline void call(Chip8Emulator *emulator, uint16_t ins) {
-  emulator->stack[emulator->sp] = emulator->pc;
   emulator->sp += 1;
+  emulator->stack[emulator->sp] = emulator->pc;
   uint16_t dest = NNN(ins);
   emulator->pc = dest;
 }
 
 static inline void pop(Chip8Emulator *emulator) {
-  emulator->sp -= 1;
   emulator->pc = emulator->stack[emulator->sp];
+  emulator->sp -= 1;
 }
 
 static inline void skip3(Chip8Emulator *emulator, uint16_t ins) {
@@ -205,43 +210,150 @@ static inline void arithmetic(Chip8Emulator *emulator, uint16_t ins) {
 
   switch (opcode) {
 
-    // set
-    case 0:
+  // set
+  case 0:
     *x = y;
     break;
 
-    // or
-    case 1:
+  // or
+  case 1:
     *x |= y;
     break;
 
-    // and 
-    case 2:
+  // and
+  case 2:
     *x &= y;
     break;
 
-    // xor
-    case 3:
+  // xor
+  case 3:
     *x ^= y;
     break;
 
-    // add
-    case 4:
+  // add
+  case 4:
     *x += y;
     if (*x > 255) {
+      *x &= 0xff;
       emulator->registers[0xf] = 1;
-      x -= 256;
+    } else {
+      emulator->registers[0xf] = 0;
     }
     break;
 
-    // subtract x - y
-    case 5:
-    *x = *x - y;
+  // subtract x - y
+  case 5:
+    
+    if (*x >= y) {
+      *x = *x - y;
+      emulator->registers[0xf] = 1;
+    } else {
+      uint8_t xsmall = *x;
+      uint8_t ysmall = y;
+      uint8_t sum = xsmall - ysmall;
+
+      // *x = 0;
+      *x = sum;
+      // *x = y - *x;
+      // *x = 255 + *x - y;
+      emulator->registers[0xf] = 0;
+    }
     break;
 
-    // subtract y - x
-    case 6:
-    *x = y - *x;
+  // shift right
+  case 6: 
+    *x = y;
+    emulator->registers[0xf] = *x & 0x01;
+    *x = *x >> 1;
+    break;
+
+  // subtract y - x
+  case 7:
+    if (y >= *x) {
+      *x = y - *x;
+      emulator->registers[0xf] = 1;
+    } else {
+      emulator->registers[0xf] = 0;
+      uint8_t xsmall = *x;
+      uint8_t ysmall = y;
+      uint8_t sum = ysmall - xsmall;
+      *x = sum;
+    }
+    break;
+
+  // shift left
+  case 0xe:
+    *x = y;
+    uint16_t shifted2 = (*x & 0x80) >> 7;
+    *x = (*x << 1) & 0xff;
+    emulator->registers[0xf] = shifted2;
+    break;
+  }
+}
+
+static void jump_with_offset(Chip8Emulator *emulator, uint16_t instruction) {
+  uint16_t nnn = NNN(instruction);
+  emulator->pc = emulator->registers[0] + nnn;
+}
+
+static void chip8_random(Chip8Emulator *emulator, uint16_t instruction) {
+  uint16_t random = (uint16_t)rand() % 256;
+  printf("%x\n", random);
+  uint16_t nn = NN(instruction);
+  uint16_t x = X(instruction);
+  emulator->registers[x] = random & nn;
+}
+
+static void binary_decimal_convert(Chip8Emulator *emulator,
+                                   uint16_t instruction) {
+  uint8_t num = emulator->registers[X(instruction)];
+
+  uint8_t biggest_digit = num / 100;
+  num = num % 100;
+  uint8_t middle_digit = num / 10;
+  num = num % 10;
+  uint8_t smallest_digit = num;
+
+  emulator->memory[emulator->index_register] = biggest_digit;
+  emulator->memory[emulator->index_register + 1] = middle_digit;
+  emulator->memory[emulator->index_register + 2] = smallest_digit;
+}
+
+static void store_memory(Chip8Emulator *emulator, uint16_t instruction) {
+  for (int i = 0; i <= X(instruction); i++) {
+    emulator->memory[emulator->index_register + i] = emulator->registers[i];
+  }
+}
+
+static void load_memory(Chip8Emulator *emulator, uint16_t instruction) {
+  for (int i = 0; i <= X(instruction); i++) {
+    emulator->registers[i] = emulator->memory[emulator->index_register + i];
+  }
+}
+
+static void chip8_handle_f_instructions(Chip8Emulator *emulator,
+                                        uint16_t instruction) {
+  uint16_t lower_half = instruction & 0xff;
+
+  switch (lower_half) {
+  case 0x33:
+    binary_decimal_convert(emulator, instruction);
+    break;
+
+  case 0x55:
+    store_memory(emulator, instruction);
+    break;
+
+  case 0x65:
+    load_memory(emulator, instruction);
+    break;
+  
+  case 0x1e:
+
+
+  default:
+    printf("unrecognized instruction %x\n", instruction);
+    break;
   }
 }
 
@@ -250,16 +362,36 @@ static inline void arithmetic(Chip8Emulator *emulator, uint16_t ins) {
 static void decode_and_execute(Chip8Emulator *emulator, uint16_t instruction) {
   // The instruction's "name" is the first 4 bits of the instruction
   uint16_t instruction_type = (instruction & 0xf000) >> 12;
-   
+
   switch (instruction_type) {
   case 0x0:
-    clear_screen(emulator);
-    // for now just clear the screen
-    // TODO: clear the screen
+    if (instruction == 0x00e0) {
+      clear_screen(emulator);
+    } else if (instruction == 0x00ee) {
+      pop(emulator);
+    } else {
+      printf("unrecognized instruction %x\n", instruction);
+    }
     break;
 
   case 0x1:
     jump(emulator, instruction);
+    break;
+
+  case 0x2:
+    call(emulator, instruction);
+    break;
+
+  case 0x3:
+    skip3(emulator, instruction);
+    break;
+
+  case 0x4:
+    skip4(emulator, instruction);
+    break;
+
+  case 0x5:
+    skip5(emulator, instruction);
     break;
 
   case 0x6:
@@ -270,16 +402,36 @@ static void decode_and_execute(Chip8Emulator *emulator, uint16_t instruction) {
     add_to_register(emulator, instruction);
     break;
 
+  case 0x8:
+    arithmetic(emulator, instruction);
+    break;
+
+  case 0x9:
+    skip6(emulator, instruction);
+    break;
+
   case 0xa:
     set_index_register(emulator, instruction);
+    break;
+
+  case 0xb:
+    jump_with_offset(emulator, instruction);
+    break;
+
+  case 0xc:
+    chip8_random(emulator, instruction);
     break;
 
   case 0xd:
     draw(emulator, instruction);
     break;
 
+  case 0xf:
+    chip8_handle_f_instructions(emulator, instruction);
+    break;
+
   default:
-    puts("unrecognized instruction found");
+    printf("unrecognized instruction %x\n", instruction);
     break;
   }
 }
@@ -300,14 +452,16 @@ void chip8_render_grid(SDL_Renderer *r, double width, double height) {
   }
 }
 
-// TODO: lower number of drawcalls by calling SDL_RenderFillRects for all 32 * 64 pixels at once
+// TODO: lower number of drawcalls by calling SDL_RenderFillRects for all 32 *
+// 64 pixels at once
 void chip8_render_display(SDL_Renderer *r, double width, double height,
                           Chip8Emulator *emulator) {
   for (int x = 0; x < CHIP8_DISPLAY_WIDTH; x++) {
     for (int y = 0; y < CHIP8_DISPLAY_HEIGHT; y++) {
       SDL_Rect pixel = {width / 64.0 * x, height / 32.0 * y,
                         width / 64.0 * (x + 1), height / 32.0 * (y + 1)};
-      int color = emulator->graphics[y] & (0x8000000000000000 >> x) ? 0xff : 0x00;
+      int color =
+          emulator->graphics[y] & (0x8000000000000000 >> x) ? 0xff : 0x00;
       SDL_SetRenderDrawColor(r, color, color, color, 0xff);
       SDL_RenderFillRect(r, &pixel);
     }

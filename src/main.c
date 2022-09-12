@@ -84,6 +84,7 @@ int main(int argc, char **argv) {
     // chip8_render_grid(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
     SDL_RenderPresent(renderer);
   } while (1);
+
   SDL_DestroyWindow(window);
   SDL_Quit();
   return EXIT_SUCCESS;

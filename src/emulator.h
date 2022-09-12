@@ -24,7 +24,8 @@ typedef struct Emulator {
   // The registers, named/indexed V0 - VF
   uint16_t registers[16];
   uint16_t index_register;
-
+  uint8_t delay_timer;
+  uint8_t sound_timer;
   uint64_t graphics[CHIP8_DISPLAY_HEIGHT];
 } Chip8Emulator;
 

@@ -16,4 +16,4 @@ target_sources(chip8 PUBLIC
 )
 target_link_libraries(chip8 ${SDL2_LIBRARIES}) 
 target_include_directories(chip8 PRIVATE ${SDL2_INCLUDE_DIRS})
-target_compile_options(chip8 PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_compile_options(chip8 PRIVATE -Wall -Wextra -Wpedantic)
