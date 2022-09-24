@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "SDL_events.h"
+#include "SDL_keycode.h"
 #include "SDL_render.h"
 #include "emulator.h"
 
@@ -298,7 +300,6 @@ static void jump_with_offset(Chip8Emulator *emulator, uint16_t instruction) {
 
 static void chip8_random(Chip8Emulator *emulator, uint16_t instruction) {
   uint16_t random = (uint16_t)rand() % 256;
-  printf("%x\n", random);
   uint16_t nn = NN(instruction);
   uint16_t x = X(instruction);
   emulator->registers[x] = random & nn;
@@ -331,11 +332,52 @@ static void load_memory(Chip8Emulator *emulator, uint16_t instruction) {
   }
 }
 
+static void read_display_timer(Chip8Emulator *emulator, uint16_t instruction) {
+  uint16_t x = X(instruction);
+  emulator->registers[x] = emulator->delay_timer;
+}
+
+static void set_display_timer(Chip8Emulator *emulator, uint16_t instruction) {
+  uint16_t x = X(instruction);
+  emulator->delay_timer = emulator->registers[x];
+}
+
+static void set_sound_timer(Chip8Emulator *emulator, uint16_t instruction) {
+  uint16_t x = X(instruction);
+  emulator->sound_timer = emulator->registers[x];
+}
+
+static void set_index_to_font(Chip8Emulator *emulator, uint16_t instruction) {
+  uint16_t character = emulator->registers[X(instruction)] & 0xf;
+  emulator->index_register = FONT_OFFSET + character * FONT_SIZE;
+}
+
+static void add_to_index(Chip8Emulator *emulator, uint16_t instruction) {
+  uint16_t x = emulator->registers[X(instruction)];
+  emulator->index_register += x;
+}
+
 static void chip8_handle_f_instructions(Chip8Emulator *emulator,
                                         uint16_t instruction) {
   uint16_t lower_half = instruction & 0xff;
 
   switch (lower_half) {
+  case 0x07:
+    read_display_timer(emulator, instruction);
+    break;
+
+  case 0x15:
+    set_display_timer(emulator, instruction);
+    break;
+
+  case 0x18:
+    set_sound_timer(emulator, instruction);
+    break;
+
+  case 0x29:
+    set_index_to_font(emulator, instruction);
+    break;
+
   case 0x33:
     binary_decimal_convert(emulator, instruction);
     break;
@@ -349,8 +391,34 @@ static void chip8_handle_f_instructions(Chip8Emulator *emulator,
     break;
   
   case 0x1e:
+    add_to_index(emulator, instruction);
+    break;
 
+  default:
+    printf("unrecognized instruction %x\n", instruction);
+    break;
+  }
+}
 
+static void chip8_handle_e_instructions(Chip8Emulator *emulator, uint16_t instruction) {
+  uint16_t lower_half = instruction & 0xff;
+
+  uint16_t x = emulator->registers[X(instruction)];
+  switch (lower_half) {
+  case 0x9e:
+  if (emulator->inputs[x]) {
+    emulator->pc += 2;
+    puts("hello");
+  }
+  break;
+  
+  case 0xa1:
+  if (!emulator->inputs[x]) {
+    emulator->pc += 2;
+  }
+  break;
+
+  
   default:
     printf("unrecognized instruction %x\n", instruction);
     break;
@@ -426,6 +494,10 @@ static void decode_and_execute(Chip8Emulator *emulator, uint16_t instruction) {
     draw(emulator, instruction);
     break;
 
+  case 0xe:
+    chip8_handle_e_instructions(emulator, instruction);
+    break;
+
   case 0xf:
     chip8_handle_f_instructions(emulator, instruction);
     break;
@@ -436,9 +508,30 @@ static void decode_and_execute(Chip8Emulator *emulator, uint16_t instruction) {
   }
 }
 
-void chip8_run(Chip8Emulator *emulator) {
+static void handle_timers(Chip8Emulator *emulator, uint32_t delta_t) {
+  if (emulator->delay_timer) {
+    emulator->delay_timer_acc += delta_t; 
+
+    if (emulator->delay_timer_acc >= 16) {
+      emulator->delay_timer_acc -= 16;
+      emulator->delay_timer -= 1;
+    }   
+  }
+
+  if (emulator->sound_timer) {
+    emulator->sound_timer_acc += delta_t;
+
+    if (emulator->sound_timer_acc >= 16) {
+      emulator->sound_timer_acc -= 16;
+      emulator->sound_timer -= 1;
+    }   
+  }
+}
+
+void chip8_run(Chip8Emulator *emulator, uint64_t delta_t, SDL_Event event) {
   uint16_t ins = fetch(emulator);
   decode_and_execute(emulator, ins);
+  handle_timers(emulator, delta_t);
 }
 
 void chip8_render_grid(SDL_Renderer *r, double width, double height) {

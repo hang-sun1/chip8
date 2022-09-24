@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SDL_events.h"
 #include "SDL_render.h"
 #include <SDL.h>
 #include <stdint.h>
@@ -24,15 +25,19 @@ typedef struct Emulator {
   // The registers, named/indexed V0 - VF
   uint16_t registers[16];
   uint16_t index_register;
+  uint64_t delay_timer_acc;
   uint8_t delay_timer;
+  uint64_t sound_timer_acc;
   uint8_t sound_timer;
   uint64_t graphics[CHIP8_DISPLAY_HEIGHT];
+  // 1 = that key is down 
+  uint8_t inputs[16];
 } Chip8Emulator;
 
 void chip8_init_emulator(Chip8Emulator *emulator);
 void chip8_load_program(Chip8Emulator *emulator, uint8_t *program,
                         long program_size);
-void chip8_run(Chip8Emulator *emulator);
+void chip8_run(Chip8Emulator *emulator, uint64_t delta_t, SDL_Event event);
 void chip8_render_grid(SDL_Renderer *r, double width, double height);
 void chip8_render_display(SDL_Renderer *r, double width, double height,
                           Chip8Emulator *emulator);
